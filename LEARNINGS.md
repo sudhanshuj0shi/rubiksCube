@@ -50,3 +50,23 @@ Think of three.js as a film production:
   - Fat lines measure thickness in **pixels**, so `LineMaterial` needs to know the canvas size.
   - Pass `resolution: new Vector2(width, height)` at construction.
   - **Also** update `edgesMaterial.resolution.set(...)` inside the resize handler — else the ribbon warps after the window resizes.
+
+---
+
+### 2026-05-02 — From a lone cube to a Rubik's troupe
+
+> Goal: turn one actor into an ensemble of 27, and give them their own dressing room.
+
+- **Act 1 — `THREE.Group` is a stage trolley**
+  - One cube was easy; 27 cubes flying around the stage independently would be a nightmare to choreograph.
+  - A `Group` is just a wheeled platform: park 27 cubies on it, and from then on the scene only sees _one_ actor. Rotate the trolley → everyone rotates together. Later, when we want to spin only the top slice, we'll build a smaller trolley and re-parent 9 cubies onto it.
+- **Act 2 — the 3×3×3 grid, centered on the origin**
+  - Coordinates `[-1, 0, 1]` for each axis = 27 slots, naturally symmetric around `(0, 0, 0)`. No off-by-one math, no manual centering.
+  - Spacing = `CUBE_SIZE + GAP`. The gap is purely cosmetic — without it, neighboring faces fight over the same pixel (z-fighting) and you get an ugly shimmer.
+- **Act 3 — share the costume, share the props**
+  - One `BoxGeometry`, one `MeshBasicMaterial`, one fat-line `edgesGeometry`/`edgesMaterial` — passed to all 27 meshes.
+  - Like 27 actors wearing the same uniform from the same wardrobe rack: the GPU only uploads the data once. Cloning per-cubie would multiply memory and draw setup for zero visual gain.
+- **Act 4 — `src/cube.js` becomes a self-contained troupe**
+  - `script.js` was getting crowded with stage hands. Extract to a module that exports `createRubiksCube()` and returns `{ group, onResize }`.
+  - `group` is what the scene cares about. `onResize` is the **callback escape hatch** — the module owns its `LineMaterial` and knows it needs pixel dimensions, but it doesn't know about `window` events. The caller wires DOM → callback. Clean separation: the troupe handles its own makeup, the director handles the venue.
+- _Gotcha:_ the Rubik's cube is ~3× wider than a single cubie, so the camera at `z = 3` was now sitting **inside** the assembly. Bumped to `z = 6` to step back into the audience seats again.
