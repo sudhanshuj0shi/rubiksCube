@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+// For faking a fat line
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 
 // Root container of the 3D world (consider this the stage)
 const scene = new THREE.Scene();
@@ -31,13 +35,24 @@ document.body.appendChild(renderer.domElement);
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 
 // Create a material: how the surface of the object looks
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
 // Create a mesh (geometry and material): a 3D object in the scene
 const cube = new THREE.Mesh(geometry, material);
 
 // Add the cube to the scene
 scene.add(cube);
+
+// Add edges to the cube
+const edges = new THREE.EdgesGeometry(geometry);
+const edgesGeometry = new LineSegmentsGeometry().fromEdgesGeometry(edges);
+const edgesMaterial = new LineMaterial({
+    color: 0x000000,
+    linewidth: 5,
+    resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+  });
+const edgesMesh = new LineSegments2(edgesGeometry, edgesMaterial);
+cube.add(edgesMesh);
 
 // Animation loop: Renders the scene and updates the cube's rotation
 const animate = () => {
@@ -63,4 +78,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   // Update the renderer's size
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Update the edges material's resolution
+  edgesMaterial.resolution.set(window.innerWidth, window.innerHeight);
 });
