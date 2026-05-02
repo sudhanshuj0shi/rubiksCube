@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { getCubieMaterials } from './cubieMaterials';
 
 // Size of each cube
 const CUBE_SIZE = 1;
@@ -30,7 +31,6 @@ export function createRubiksCube() {
 
   // Shared resources reused across all 27 cubies
   const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
   // Create edges for the cube
   const edges = new THREE.EdgesGeometry(geometry);
@@ -42,7 +42,8 @@ export function createRubiksCube() {
   });
 
   const createCube = (x, y, z) => {
-    const cube = new THREE.Mesh(geometry, material);
+    const cubeMaterial = getCubieMaterials(x, y, z);
+    const cube = new THREE.Mesh(geometry, cubeMaterial);
 
     cube.position.set(x * CUBE_DISTANCE, y * CUBE_DISTANCE, z * CUBE_DISTANCE);
     cube.add(new LineSegments2(edgesGeometry, edgesMaterial));

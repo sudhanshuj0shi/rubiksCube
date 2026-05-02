@@ -70,3 +70,25 @@ Think of three.js as a film production:
   - `script.js` was getting crowded with stage hands. Extract to a module that exports `createRubiksCube()` and returns `{ group, onResize }`.
   - `group` is what the scene cares about. `onResize` is the **callback escape hatch** — the module owns its `LineMaterial` and knows it needs pixel dimensions, but it doesn't know about `window` events. The caller wires DOM → callback. Clean separation: the troupe handles its own makeup, the director handles the venue.
 - _Gotcha:_ the Rubik's cube is ~3× wider than a single cubie, so the camera at `z = 3` was now sitting **inside** the assembly. Bumped to `z = 6` to step back into the audience seats again.
+
+---
+
+### 2026-05-02 — Painting the cube: stickers from a wardrobe rack
+
+> Goal: give each face of the cube its real Rubik's color, but only on the *outside*.
+
+- **Act 1 — one mesh, six costumes**
+  - So far we'd been handing each cubie a single material — one paint can for the whole box. Turns out `THREE.Mesh` _also_ accepts an **array of 6 materials** when the geometry is a `BoxGeometry`: three.js has already split the box into 6 face groups internally, one per side.
+  - Mental model: one actor, but the costume designer hands them a different shirt for each side they turn toward the audience.
+- **Act 2 — the face-order contract (memorize this)**
+  - The array order is **fixed**: `[+X, -X, +Y, -Y, +Z, -Z]` → right, left, top, bottom, front, back.
+  - Counterintuitive (most people guess "top first"), so it lives in the JSDoc on `getCubieMaterials`. Swap two entries and you get red on top — debugging that visually is its own special hell.
+- **Act 3 — the grid pays off again**
+  - Each cubie's position `(x, y, z)` with `{-1, 0, 1}` slots already encodes which sides it faces outward. `x === 1` means "this cubie sits on the right column of the cube" → its `+X` face shows red; everything else stays interior black.
+  - Falls out for free: corners get 3 colors, edges 2, centers 1, hidden core 0. No special cases, no bookkeeping.
+- **Act 4 — the wardrobe rack: 7 materials, not 162**
+  - Naive instinct: build `27 × 6 = 162` materials. Actual need: **7** (one per direction + one interior black).
+  - In `src/cubieMaterials.js`, `MATERIALS` is built once at **module-scope** — JS modules execute their top level exactly once on first import. Every `getCubieMaterials()` call afterwards just hands out references from the rack. Materials in three.js are pure paint; many cubies can wear the same red simultaneously without conflict.
+- **Act 5 — a new module, a new boundary**
+  - Color knowledge lives entirely inside `src/cubieMaterials.js`. `src/cube.js` gained **one import line**; `script.js` didn't change at all.
+  - Future palette experiments (color-blind mode, win-state flash, accessibility tweaks) touch one file. The troupe handles its own makeup; the venue and director stay blissfully unaware.
