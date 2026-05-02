@@ -16,16 +16,16 @@ const COLORS = {
   interior: 0x111111,
 };
 
-// One MeshBasicMaterial per unique color, built once and reused across
+// One MeshStandardMaterial per unique color, built once and reused across
 // all 27 cubies — 7 materials total instead of 27 * 6 = 162.
 const MATERIALS = {
-  right: new THREE.MeshBasicMaterial({ color: COLORS.right }),
-  left: new THREE.MeshBasicMaterial({ color: COLORS.left }),
-  top: new THREE.MeshBasicMaterial({ color: COLORS.top }),
-  bottom: new THREE.MeshBasicMaterial({ color: COLORS.bottom }),
-  front: new THREE.MeshBasicMaterial({ color: COLORS.front }),
-  back: new THREE.MeshBasicMaterial({ color: COLORS.back }),
-  interior: new THREE.MeshBasicMaterial({ color: COLORS.interior }),
+  right: new THREE.MeshStandardMaterial({ color: COLORS.right, roughness: 0.4 }),
+  left: new THREE.MeshStandardMaterial({ color: COLORS.left, roughness: 0.4 }),
+  top: new THREE.MeshStandardMaterial({ color: COLORS.top, roughness: 0.4 }),
+  bottom: new THREE.MeshStandardMaterial({ color: COLORS.bottom, roughness: 0.4 }),
+  front: new THREE.MeshStandardMaterial({ color: COLORS.front, roughness: 0.4 }),
+  back: new THREE.MeshStandardMaterial({ color: COLORS.back, roughness: 0.4 }),
+  interior: new THREE.MeshStandardMaterial({ color: COLORS.interior, roughness: 1 }),
 };
 
 /**

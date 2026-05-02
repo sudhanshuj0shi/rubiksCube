@@ -5,6 +5,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // Root container of the 3D world (consider this the stage)
 const scene = new THREE.Scene();
 
+// Ambient light: a soft, diffuse light that illuminates all objects equally
+const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+scene.add(ambientLight);
+
+// Directional light: a light that shines in a specific direction
+const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+directionalLight.position.set(5, 10, 7);
+scene.add(directionalLight);
+
 // Camera: the eyes of the viewer
 // 75: field of view (vertical angle)
 // window.innerWidth / window.innerHeight: aspect ratio

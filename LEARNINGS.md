@@ -111,3 +111,23 @@ Think of three.js as a film production:
 - **Act 4 — two rotations is one too many**
   - Auto-rotating the cube while the user can also orbit the camera is dizzying — both happen at once and it's hard to tell which is which. Pulled out the `rubiksCube.group.rotation += 0.01` lines so the cube stays still and the user owns the viewpoint.
 - _Aha:_ `OrbitControls` rotates the **camera around the cube**, not the cube itself. Same visual effect from the audience's seat, but mechanically very different — and it's why the cube module didn't have to change a single line.
+
+---
+
+### 2026-05-02 — Turning the stage lights on
+
+> Goal: stop the cube from looking like a cardboard cutout. Give it real plastic shading.
+
+- **Act 1 — `MeshBasicMaterial` → `MeshStandardMaterial`**
+  - Until now, every cubie wore a flat costume that was its own light source — the painted cardboard look. `MeshStandardMaterial` swaps that for a real actor: physically-based shading that reacts to whatever light hits it. The stickers now have lit and shadowed sides as you orbit.
+  - The trade: the actor is invisible until you turn the lights on. Switch the material without adding lights and the cube goes pitch black — only the fat-line edges remain. Both changes belong in the same commit for that reason.
+- **Act 2 — Two lights, two jobs**
+  - `AmbientLight` = the house lights. Uniform, directionless, hits every face equally. Without it, surfaces facing away from the sun would render as pure black. With it, you set a baseline brightness for the whole scene.
+  - `DirectionalLight` = the sun. Parallel rays from infinity, all traveling in the same direction. This is what gives the cube its lit / shadowed gradient and makes orbiting feel rewarding.
+- **Act 3 — DirectionalLight's `position` is a direction, not a location**
+  - For a directional light, `light.position` doesn't mean "the sun is over here at (5, 10, 7)". It means "the rays travel **from** (5, 10, 7) **toward** the target" (default origin). The light is conceptually infinitely far away — moving it twice as far doesn't change brightness.
+  - Mental model: holding up a finger to the sun. The finger's direction relative to the sun is what casts the shadow, not how close you stand.
+- **Act 4 — `roughness` is the matte/glossy knob**
+  - PBR's two main appearance dials are `roughness` (1 = chalk, 0 = mirror) and `metalness` (1 = polished metal, 0 = plastic). For Rubik's stickers, `roughness: 0.4` gives real-plastic gloss without looking wet.
+  - Interior faces stay at `roughness: 1` — fully matte. They're hidden inside the cube anyway, so spending compute on highlights nobody sees would be silly.
+- _Aha:_ face **normals** do all the work silently. Every face on a `BoxGeometry` ships with a built-in arrow pointing outward; the renderer compares each normal to the light direction to decide brightness. Wrote zero normal code, got per-face shading for free — that's the gift PBR materials give you on top of vanilla geometry.
