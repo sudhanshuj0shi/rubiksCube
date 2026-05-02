@@ -92,3 +92,22 @@ Think of three.js as a film production:
 - **Act 5 — a new module, a new boundary**
   - Color knowledge lives entirely inside `src/cubieMaterials.js`. `src/cube.js` gained **one import line**; `script.js` didn't change at all.
   - Future palette experiments (color-blind mode, win-state flash, accessibility tweaks) touch one file. The troupe handles its own makeup; the venue and director stay blissfully unaware.
+
+---
+
+### 2026-05-02 — Handing the camera to the audience
+
+> Goal: let the user spin the cube themselves instead of watching it spin on autopilot.
+
+- **Act 1 — `OrbitControls` is a phone-on-a-rubber-band rig**
+  - The addon takes the camera and ties it (invisibly) to a target point in space — by default the origin, which is exactly where our cube sits. Drag = swing the rig around the pin; scroll = pull the rubber band shorter or longer; right-drag = move the pin itself (pan).
+  - Lives in `three/addons/controls/OrbitControls.js`. Same addon import shape as the fat-line trio.
+- **Act 2 — controls need a camera and a DOM element**
+  - Camera, because they mutate the audience's seat each frame. The canvas (`renderer.domElement`), because that's where mouse/touch events fire — listening on the canvas (not `window`) keeps unrelated UI from accidentally rotating the cube later.
+  - Note: `controls` never gets added to the scene. There's nothing to render — it's a behavior bolted onto an existing camera.
+- **Act 3 — damping = inertia, but only if you crank the projector**
+  - `enableDamping = true` gives the camera a satisfying glide after you release the mouse, instead of a hard stop. `dampingFactor` is taste — `0.05` floaty, `0.08` snappy, `0.2` almost no glide.
+  - The price: `controls.update()` **must** run every frame in the animate loop, _before_ `renderer.render(...)`. Skip it and the glide never gets computed — input feels jerky and stuck.
+- **Act 4 — two rotations is one too many**
+  - Auto-rotating the cube while the user can also orbit the camera is dizzying — both happen at once and it's hard to tell which is which. Pulled out the `rubiksCube.group.rotation += 0.01` lines so the cube stays still and the user owns the viewpoint.
+- _Aha:_ `OrbitControls` rotates the **camera around the cube**, not the cube itself. Same visual effect from the audience's seat, but mechanically very different — and it's why the cube module didn't have to change a single line.

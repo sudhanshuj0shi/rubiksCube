@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createRubiksCube } from './src/cube';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // Root container of the 3D world (consider this the stage)
 const scene = new THREE.Scene();
@@ -22,6 +23,16 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
+// Camera controls: drag to orbit, scroll to zoom, right-drag to pan.
+// Needs the camera (it mutates camera.position) and the canvas
+// (it listens for mouse/touch events on it).
+const controls = new OrbitControls(camera, renderer.domElement);
+
+// Smooth glide after release — feels less jerky than a hard stop.
+// Requires controls.update() inside the animate loop.
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
 // Build the 27-cubie Rubik's-cube
 const rubiksCube = createRubiksCube();
 scene.add(rubiksCube.group);
@@ -31,10 +42,7 @@ const animate = () => {
   // Request the next animation frame
   window.requestAnimationFrame(animate);
 
-  // Rotate the cube
-  // 0.01: how fast to rotate
-  rubiksCube.group.rotation.x += 0.01;
-  rubiksCube.group.rotation.y += 0.01;
+  controls.update();
 
   // Render the scene: Renders what the camera sees of the scene of the canvas
   renderer.render(scene, camera);
