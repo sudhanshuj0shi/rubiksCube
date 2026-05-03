@@ -193,3 +193,24 @@ Think of three.js as a film production:
   - `dragSign * axisSign * slot < 0 ? 'cw' : 'ccw'` — three ±1 multiplications resolve every face × direction × slot combo. The math falls out of `cross(faceNormal, tangent)` baked into the `FACE_TANGENTS` table at module init.
   - Same "right-hand rule mirrored across pairs" pattern from last session's `SLICES` table. Trust the table-derived sign; don't re-derive it per face every time.
 - _Aha:_ middle slices (`M`, `E`, `S` in standard notation) aren't modeled in `SLICES` yet — a click on the dead-center cubie of any face would try to twist around an axis with no slot at ±1. Detect early (`slot === 0 → return null`) and abort cleanly. Future-proof for when middle slices land.
+
+---
+
+### 2026-05-03 — Hand on the turntable
+
+> Goal: feed the gesture's decision into the engine so the slice tracks the finger frame by frame.
+
+- **Act 1 — One number drives the whole thing**
+  - The bridge between "user dragged some pixels" and "slice has rotated some radians" is a single multiplication: `dragAlongTangent × sensitivity`. NDC drag → radians. No animation, no easing — the slice's angle is a pure function of how far the pointer has moved since pointerdown.
+  - That's why drag-to-twist feels responsive: there's no smoothing layer between input and output. Pull back, the slice un-rotates. Reverse direction, it reverses with you.
+- **Act 2 — Three lifecycle moments, three handlers**
+  - `pointerdown`: stage the gesture (raycast + tangent projection).
+  - First `pointermove` past threshold: `beginRotation(face)` — the engine wakes up, parents 9 cubies under a transient pivot.
+  - Every subsequent `pointermove`: `session.setAngle(...)` — the only line that does any actual rotation.
+  - `pointerup`: `session.end()` — engine snaps to the nearest 90° and **bakes** the rotation into each cubie's permanent local transform. Cube is now in a new "rest" state, ready for the next gesture.
+- **Act 3 — Why the milestone collapsed to ~10 lines**
+  - The engine was already designed for continuous angle changes (M1's `setAngle` instead of a one-shot `rotateBy90`).
+  - The gesture had a phase enum precisely so it could outlive a single decision (M2b).
+  - The decision helper already computed the chosen tangent + axisSign — just hadn't been returning them.
+  - All the abstractions drawn earlier sat at the right boundaries; final wiring fell out as data plumbing, not new logic.
+- _Aha:_ when milestones snap together this cleanly, it's a sign the earlier abstractions earned their keep. The "should this engine method be `rotateBy90` or `setAngle`?" question from the slice-rotation session looked like overengineering at the time. It paid for itself the moment drag interaction needed live updates with no rewrite.

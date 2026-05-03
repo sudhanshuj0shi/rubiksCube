@@ -105,11 +105,9 @@ const SLICE_BY_AXIS_SLOT = {
 // Drag distance (in NDC; canvas spans 2) before locking in a slice. ~5px.
 const DRAG_DECISION_THRESHOLD = 0.01;
 
-const snapPosition = (cubie) => ({
-  x: Math.round(cubie.position.x),
-  y: Math.round(cubie.position.y),
-  z: Math.round(cubie.position.z),
-});
+// Drag-to-rotation gain. ~0.5 NDC of drag (half the canvas) → 90° turn.
+// Tune higher for snappier feel, lower for more controlled twists.
+const ROTATION_SENSITIVITY = Math.PI;
 
 // World tangent → normalized NDC direction at the cubie's screen position.
 // Called once per gesture so per-frame moves are just dot products.
@@ -119,8 +117,9 @@ const projectTangentToNdc = (worldTangent, originWorldPos, camera) => {
   return new THREE.Vector2(tip.x - start.x, tip.y - start.y).normalize();
 };
 
-// Returns { face, direction } once drag exceeds threshold; null otherwise
-// (still below threshold or hit a middle slice — middle slices aren't modeled).
+// Returns the locked-in slice + tangent + sign once drag exceeds threshold;
+// null otherwise (still below threshold, or hit a middle slice — those
+// aren't modeled in SLICES yet).
 const decideSliceFromDrag = (g, dragNdcDelta) => {
   const dotH = dragNdcDelta.dot(g.screenH);
   const dotV = dragNdcDelta.dot(g.screenV);
@@ -139,7 +138,13 @@ const decideSliceFromDrag = (g, dragNdcDelta) => {
   // Three signs collapse the cross-product geometry into one branch.
   const direction = dragSign * decision.axisSign * slot < 0 ? 'cw' : 'ccw';
 
-  return { face: SLICE_BY_AXIS_SLOT[decision.axis][slot], direction };
+  return {
+    face: SLICE_BY_AXIS_SLOT[decision.axis][slot],
+    direction,
+    // Tangent and sign needed by pointermove to keep mapping drag to angle.
+    tangent: useH ? g.screenH : g.screenV,
+    angleSign: decision.axisSign,
+  };
 };
 
 // Active gesture: null | { phase: 'PICKED' | 'COMMITTED', ... }
@@ -188,11 +193,9 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
   controls.enabled = false;
   // Keep receiving move/up even if the cursor leaves the canvas.
   renderer.domElement.setPointerCapture(event.pointerId);
-
-  console.log('picked', { face: faceName, gridPosition: snapPosition(cubie) });
 });
 
-// Decide the slice once drag exceeds threshold; M2c will drive setAngle here.
+// Drive a live slice rotation while a gesture is in flight.
 renderer.domElement.addEventListener('pointermove', (event) => {
   if (!gesture || event.pointerId !== gesture.pointerId) return;
 
@@ -201,20 +204,27 @@ renderer.domElement.addEventListener('pointermove', (event) => {
   pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   const dragDelta = pointerNdc.clone().sub(gesture.startNdc);
 
-  if (gesture.phase !== 'PICKED') return;
+  // First crossing of threshold: lock in the slice and start an engine session.
+  if (gesture.phase === 'PICKED') {
+    const decision = decideSliceFromDrag(gesture, dragDelta);
+    if (!decision) return;
 
-  const decision = decideSliceFromDrag(gesture, dragDelta);
-  if (!decision) return;
+    gesture.phase = 'COMMITTED';
+    gesture.decision = decision;
+    gesture.session = rubiksCube.beginRotation(decision.face);
+  }
 
-  gesture.phase = 'COMMITTED';
-  gesture.decision = decision;
-  console.log('decided', decision);
+  // On every committed frame: drag-along-tangent → angle → engine.
+  const dot = dragDelta.dot(gesture.decision.tangent);
+  gesture.session.setAngle(dot * ROTATION_SENSITIVITY * gesture.decision.angleSign);
 });
 
 renderer.domElement.addEventListener('pointerup', (event) => {
   if (!gesture || event.pointerId !== gesture.pointerId) return;
 
-  console.log('released', { phase: gesture.phase, decision: gesture.decision ?? null });
+  // Hand control back to the engine: snap to nearest 90° and bake.
+  // Only present if the gesture committed; releasing too early skips this.
+  if (gesture.session) gesture.session.end();
 
   controls.enabled = true;
   renderer.domElement.releasePointerCapture(event.pointerId);
