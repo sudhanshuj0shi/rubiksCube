@@ -165,6 +165,21 @@ const decideSliceFromDrag = (g, dragNdcDelta) => {
 // Active gesture: null | { phase: 'PICKED' | 'COMMITTED', ... }
 let gesture = null;
 
+// Convert a pointer event's screen position into NDC, in-place on pointerNdc.
+const updatePointerNdc = (event) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+};
+
+// Swap the canvas cursor based on whether the pointer is over a cubie.
+// 'grab' = "you can pick this up", '' = browser default for empty space.
+const refreshHoverCursor = () => {
+  raycaster.setFromCamera(pointerNdc, camera);
+  const [hit] = raycaster.intersectObjects(rubiksCube.cubies, false);
+  renderer.domElement.style.cursor = hit ? 'grab' : '';
+};
+
 // Build the 27-cubie Rubik's-cube
 const rubiksCube = createRubiksCube();
 scene.add(rubiksCube.group);
@@ -176,9 +191,7 @@ window.cube = rubiksCube;
 
 // Start a gesture if the click hits a cubie; otherwise let orbit handle it.
 renderer.domElement.addEventListener('pointerdown', (event) => {
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  updatePointerNdc(event);
 
   raycaster.setFromCamera(pointerNdc, camera);
   const [hit] = raycaster.intersectObjects(rubiksCube.cubies, false);
@@ -206,17 +219,23 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
   };
 
   controls.enabled = false;
+  renderer.domElement.style.cursor = 'grabbing';
   // Keep receiving move/up even if the cursor leaves the canvas.
   renderer.domElement.setPointerCapture(event.pointerId);
 });
 
-// Drive a live slice rotation while a gesture is in flight.
+// Hover + drag handler. With no gesture, we just update the cursor; with a
+// gesture in flight, we drive the slice rotation.
 renderer.domElement.addEventListener('pointermove', (event) => {
-  if (!gesture || event.pointerId !== gesture.pointerId) return;
+  updatePointerNdc(event);
 
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  if (!gesture) {
+    refreshHoverCursor();
+    return;
+  }
+
+  if (event.pointerId !== gesture.pointerId) return;
+
   const dragDelta = pointerNdc.clone().sub(gesture.startNdc);
 
   // First crossing of threshold: lock in the slice and start an engine session.
@@ -244,6 +263,11 @@ renderer.domElement.addEventListener('pointerup', (event) => {
   controls.enabled = true;
   renderer.domElement.releasePointerCapture(event.pointerId);
   gesture = null;
+
+  // Pointer may still be over the cube — re-evaluate so it shows 'grab'
+  // instead of staying stuck on 'grabbing'.
+  updatePointerNdc(event);
+  refreshHoverCursor();
 });
 
 // Animation loop: Renders the scene and updates the cube's rotation

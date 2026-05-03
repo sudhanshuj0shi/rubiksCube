@@ -231,3 +231,12 @@ Think of three.js as a film production:
   - `SLICE_BY_AXIS_SLOT` went from `(axis, slot) → letter` to `(axis, slot) → { face, cwSign }`. Each slice's cw direction now sits next to its name instead of being implicit in a sign-multiplication trick.
   - Wider table, but any future code reading cw direction does it explicitly — no detective work, no re-importing `SLICES` from `cube.js`.
 - _Aha:_ slick formulas that lean on side conditions ("slot is never 0") are short, but the moment the condition relaxes the formula lies silently. Better to write math whose correctness doesn't depend on a hidden assumption, even at a few extra characters. Especially when the assumption was holding back an entire class of behavior.
+
+---
+
+### 2026-05-03 — A cursor that knows what it can grab
+
+- **Cursor as a stage whisper** — the OS cursor is the cheapest UI affordance there is. `'grab'` over a cubie + `'grabbing'` mid-drag tells the user "this is interactive" without a single label, tooltip, or instruction. One CSS string, infinite onboarding.
+- **Hover = raycast on every move** — the same picker that runs on `pointerdown` (raycaster + 27 cubies) also runs on `pointermove` when no gesture is active. 27 bounding-box tests per move is essentially free; no throttling needed for scenes this size. The lesson: if a check is already cheap, don't pre-optimize it away.
+- **Three cursor states tied to three lifecycle moments** — `pointermove` (idle): grab/none toggle. `pointerdown` (grabbed): force `'grabbing'`. `pointerup` (released): re-raycast and restore. The release case matters because pointer capture means the pointer might still be over the cube when the gesture ends — without re-checking, the cursor would stay frozen on `'grabbing'` until the user moved.
+- _Aha:_ the same `pointerNdc` + `raycaster` instances drive both hover and drag. No parallel state to keep in sync — the cursor naturally agrees with what a click would do, because they share the picker. Reusing the picking primitive is what makes "hover state" a 5-line addition instead of a feature.
