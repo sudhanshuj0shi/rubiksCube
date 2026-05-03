@@ -41,6 +41,7 @@ const snapAngle = (radians) => Math.round(radians / QUARTER_TURN) * QUARTER_TURN
  *
  * @returns An object with:
  *   - `group`: the `THREE.Group` containing all cubies — add this to the scene
+ *   - `cubies`: a stable list of all 27 cubie meshes
  *   - `onResize(width, height)`: call from the window resize handler so the
  *     fat-line edges keep their pixel thickness
  *   - `beginRotation(face)`: starts a stateful rotation session; returns
@@ -75,6 +76,12 @@ export function createRubiksCube() {
     return cube;
   };
 
+  // Stable list of all 27 cubie meshes — handy for raycasting and any
+  // other "operate on every cubie" task. Building it during construction
+  // is cleaner than walking group.children later (which can also contain
+  // transient rotation pivots).
+  const cubies = [];
+
   // Create the cubes in each position slot for each axis
   // x, y, z step through the grid coordinates on each axis
   for (const x of POSITION_SLOTS) {
@@ -83,6 +90,7 @@ export function createRubiksCube() {
         const cube = createCube(x, y, z);
 
         group.add(cube);
+        cubies.push(cube);
       }
     }
   }
@@ -169,6 +177,7 @@ export function createRubiksCube() {
 
   return {
     group,
+    cubies,
     onResize,
     beginRotation,
     rotateSlice,

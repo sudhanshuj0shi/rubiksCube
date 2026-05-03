@@ -42,9 +42,70 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 
+// Raycaster: the object that casts rays from the camera through the scene
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+
+// Map a world-space unit normal to its Rubik's face letter.
+// Must be world-space: a cubie's local +Y face can point any direction
+// after the cube has been twisted, so we'd otherwise mis-label faces.
+const normalToFaceName = (worldNormal) => {
+  // round() absorbs tiny floating-point drift (e.g. 0.99998 → 1).
+  const x = Math.round(worldNormal.x);
+  const y = Math.round(worldNormal.y);
+  const z = Math.round(worldNormal.z);
+
+  if (x === 1) return 'R';
+  if (x === -1) return 'L';
+  if (y === 1) return 'U';
+  if (y === -1) return 'D';
+  if (z === 1) return 'F';
+  if (z === -1) return 'B';
+
+  return null;
+};
+
 // Build the 27-cubie Rubik's-cube
 const rubiksCube = createRubiksCube();
 scene.add(rubiksCube.group);
+
+// Dev-time hook so you can poke the cube from the browser console.
+// Try: cube.rotateSlice('U', 'cw'),
+//      const s = cube.beginRotation('U'); s.setAngle(Math.PI/3); s.end();
+window.cube = rubiksCube;
+
+// Pick the cubie + face under the pointer when the user clicks the canvas.
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  // Convert the click's pixel position into NDC, accounting for the
+  // canvas's actual on-page rect (handles non-fullscreen layouts cleanly).
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  // Build the ray for this pixel through the current camera, then ask
+  // every cubie if it intersects. `false` = don't recurse into the
+  // wireframe LineSegments2 children parented to each cubie.
+  raycaster.setFromCamera(pointerNdc, camera);
+  const [hit] = raycaster.intersectObjects(rubiksCube.cubies, false);
+  if (!hit) return;
+
+  // hit.face.normal is in the cubie's *local* space. Transforming by
+  // matrixWorld gives the direction the face is actually pointing in
+  // the scene right now — the only normal that maps to a Rubik's letter.
+  const cubie = hit.object;
+  const worldNormal = hit.face.normal.clone().transformDirection(cubie.matrixWorld);
+  const face = normalToFaceName(worldNormal);
+
+  // Grid coords use Math.round on position because slot 0/±1 maps to
+  // world coords 0/±CUBE_DISTANCE (1.05). Rounding tolerates GAP cleanly.
+  const gridPosition = {
+    x: Math.round(cubie.position.x),
+    y: Math.round(cubie.position.y),
+    z: Math.round(cubie.position.z),
+  };
+
+  console.log('clicked', { face, gridPosition, point: hit.point });
+});
 
 // Animation loop: Renders the scene and updates the cube's rotation
 const animate = () => {
