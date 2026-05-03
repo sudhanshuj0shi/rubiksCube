@@ -214,3 +214,20 @@ Think of three.js as a film production:
   - The decision helper already computed the chosen tangent + axisSign — just hadn't been returning them.
   - All the abstractions drawn earlier sat at the right boundaries; final wiring fell out as data plumbing, not new logic.
 - _Aha:_ when milestones snap together this cleanly, it's a sign the earlier abstractions earned their keep. The "should this engine method be `rotateBy90` or `setAngle`?" question from the slice-rotation session looked like overengineering at the time. It paid for itself the moment drag interaction needed live updates with no rewrite.
+
+---
+
+### 2026-05-03 — All nine slices, no exceptions
+
+> Goal: enable the three middle slices (M, E, S) so every legal Rubik's move is reachable by drag.
+
+- **Act 1 — The slice table grows up**
+  - Three rows added to `SLICES`: `M` (between L/R), `E` (between U/D), `S` (between F/B). Their `cwAngle` follows standard Rubik's convention — M mirrors L, E mirrors D, S mirrors F. Not arbitrary: it's the right-hand rule mirrored across each axis's chosen "guide" face.
+  - The rotation engine itself needed **zero changes** — `Math.round(...) === slot` already handles `slot=0` cleanly (center cubies sit at world position 0). The pivot-and-bake mechanism is genuinely slice-agnostic.
+- **Act 2 — A clever shortcut breaks; an honest one replaces it**
+  - Old cw/ccw formula: `dragSign * axisSign * slot < 0`. Three ±1's collapsing into one branch — slick. But it leaned on `slot ≠ 0`. Slot=0 makes the product 0, which never satisfies `< 0`, so middle slices would have been misclassified silently.
+  - New formula: `dragSign * axisSign === cwSign`. Compares the drag's rotation sign **directly** to the slice's cw sign, no slot multiplication. Same answer for outer slices (mathematically equivalent), correct answer for middle.
+- **Act 3 — Tables carry intent, not tricks**
+  - `SLICE_BY_AXIS_SLOT` went from `(axis, slot) → letter` to `(axis, slot) → { face, cwSign }`. Each slice's cw direction now sits next to its name instead of being implicit in a sign-multiplication trick.
+  - Wider table, but any future code reading cw direction does it explicitly — no detective work, no re-importing `SLICES` from `cube.js`.
+- _Aha:_ slick formulas that lean on side conditions ("slot is never 0") are short, but the moment the condition relaxes the formula lies silently. Better to write math whose correctness doesn't depend on a hidden assumption, even at a few extra characters. Especially when the assumption was holding back an entire class of behavior.

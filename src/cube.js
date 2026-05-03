@@ -20,15 +20,20 @@ const POSITION_SLOTS = [-1, 0, 1];
 // 90° expressed in radians — the unit a single Rubik's move snaps to.
 const QUARTER_TURN = Math.PI / 2;
 
-// Per-face slice metadata: which axis spins, which slot identifies its 9
-// cubies, and the angle that reads as "clockwise from outside the cube".
+// Per-slice metadata: rotation axis, the slot identifying which 9 cubies
+// belong to it, and the angle that reads as "clockwise from outside".
+// M / E / S are the middle slices; standard Rubik's notation has them
+// follow L / D / F respectively (same rotation direction as their guide).
 const SLICES = {
   U: { axis: 'y', slot: 1, cwAngle: -QUARTER_TURN },
   D: { axis: 'y', slot: -1, cwAngle: QUARTER_TURN },
+  E: { axis: 'y', slot: 0, cwAngle: QUARTER_TURN },
   R: { axis: 'x', slot: 1, cwAngle: -QUARTER_TURN },
   L: { axis: 'x', slot: -1, cwAngle: QUARTER_TURN },
+  M: { axis: 'x', slot: 0, cwAngle: QUARTER_TURN },
   F: { axis: 'z', slot: 1, cwAngle: -QUARTER_TURN },
   B: { axis: 'z', slot: -1, cwAngle: QUARTER_TURN },
+  S: { axis: 'z', slot: 0, cwAngle: -QUARTER_TURN },
 };
 
 // Snap to nearest quarter turn. Below 45° → 0 (the twist reverts);
@@ -103,7 +108,7 @@ export function createRubiksCube() {
    * times, with any radian value) and finally `end`, which snaps to the
    * nearest quarter turn and bakes the result into the cubies.
    *
-   * @param {'U'|'D'|'L'|'R'|'F'|'B'} face
+   * @param {'U'|'D'|'E'|'L'|'R'|'M'|'F'|'B'|'S'} face
    * @returns {{ setAngle: (radians: number) => void, end: () => void }}
    */
   const beginRotation = (face) => {
@@ -155,7 +160,7 @@ export function createRubiksCube() {
   /**
    * Apply one complete 90° move atomically.
    *
-   * @param {'U'|'D'|'L'|'R'|'F'|'B'} face
+   * @param {'U'|'D'|'E'|'L'|'R'|'M'|'F'|'B'|'S'} face
    * @param {'cw'|'ccw'} [direction='cw']
    */
   const rotateSlice = (face, direction = 'cw') => {

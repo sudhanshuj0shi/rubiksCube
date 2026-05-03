@@ -95,11 +95,25 @@ const FACE_TANGENTS = {
   },
 };
 
-// Inverse of cube.js's SLICES: (axis, slot) → slice letter.
+// Inverse of cube.js's SLICES: (axis, slot) → { face letter, cwSign }.
+// cwSign is the sign of the slice's cwAngle in cube.js — used by the
+// drag picker to decide cw vs ccw without re-importing SLICES.
 const SLICE_BY_AXIS_SLOT = {
-  x: { '-1': 'L', 1: 'R' },
-  y: { '-1': 'D', 1: 'U' },
-  z: { '-1': 'B', 1: 'F' },
+  x: {
+    '-1': { face: 'L', cwSign: 1 },
+    0: { face: 'M', cwSign: 1 },
+    1: { face: 'R', cwSign: -1 },
+  },
+  y: {
+    '-1': { face: 'D', cwSign: 1 },
+    0: { face: 'E', cwSign: 1 },
+    1: { face: 'U', cwSign: -1 },
+  },
+  z: {
+    '-1': { face: 'B', cwSign: 1 },
+    0: { face: 'S', cwSign: -1 },
+    1: { face: 'F', cwSign: -1 },
+  },
 };
 
 // Drag distance (in NDC; canvas spans 2) before locking in a slice. ~5px.
@@ -118,8 +132,7 @@ const projectTangentToNdc = (worldTangent, originWorldPos, camera) => {
 };
 
 // Returns the locked-in slice + tangent + sign once drag exceeds threshold;
-// null otherwise (still below threshold, or hit a middle slice — those
-// aren't modeled in SLICES yet).
+// null while drag is still below threshold.
 const decideSliceFromDrag = (g, dragNdcDelta) => {
   const dotH = dragNdcDelta.dot(g.screenH);
   const dotV = dragNdcDelta.dot(g.screenV);
@@ -132,14 +145,16 @@ const decideSliceFromDrag = (g, dragNdcDelta) => {
   const decision = useH ? FACE_TANGENTS[g.faceName].H : FACE_TANGENTS[g.faceName].V;
   const dragSign = Math.sign(useH ? dotH : dotV);
 
+  // Slot is -1 / 0 / +1 — outer slices on the ends, middle slice at 0.
   const slot = Math.round(g.cubie.position[decision.axis]);
-  if (slot === 0) return null;
+  const sliceInfo = SLICE_BY_AXIS_SLOT[decision.axis][slot];
 
-  // Three signs collapse the cross-product geometry into one branch.
-  const direction = dragSign * decision.axisSign * slot < 0 ? 'cw' : 'ccw';
+  // Drag's rotation in axis-letter space is (dragSign * axisSign).
+  // If that matches the slice's cwSign, the gesture is cw, else ccw.
+  const direction = dragSign * decision.axisSign === sliceInfo.cwSign ? 'cw' : 'ccw';
 
   return {
-    face: SLICE_BY_AXIS_SLOT[decision.axis][slot],
+    face: sliceInfo.face,
     direction,
     // Tangent and sign needed by pointermove to keep mapping drag to angle.
     tangent: useH ? g.screenH : g.screenV,
