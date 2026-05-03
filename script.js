@@ -65,6 +65,86 @@ const normalToFaceName = (worldNormal) => {
   return null;
 };
 
+// Per face: the world-space "drag right" (H) and "drag up" (V) tangents
+// (looking at the face from outside), plus axis/axisSign pre-baked from
+// cross(faceNormal, tangent) for cw/ccw resolution at runtime.
+const FACE_TANGENTS = {
+  F: {
+    H: { tangent: new THREE.Vector3(1, 0, 0), axis: 'y', axisSign: 1 },
+    V: { tangent: new THREE.Vector3(0, 1, 0), axis: 'x', axisSign: -1 },
+  },
+  B: {
+    H: { tangent: new THREE.Vector3(-1, 0, 0), axis: 'y', axisSign: 1 },
+    V: { tangent: new THREE.Vector3(0, 1, 0), axis: 'x', axisSign: 1 },
+  },
+  R: {
+    H: { tangent: new THREE.Vector3(0, 0, -1), axis: 'y', axisSign: 1 },
+    V: { tangent: new THREE.Vector3(0, 1, 0), axis: 'z', axisSign: 1 },
+  },
+  L: {
+    H: { tangent: new THREE.Vector3(0, 0, 1), axis: 'y', axisSign: 1 },
+    V: { tangent: new THREE.Vector3(0, 1, 0), axis: 'z', axisSign: -1 },
+  },
+  U: {
+    H: { tangent: new THREE.Vector3(1, 0, 0), axis: 'z', axisSign: -1 },
+    V: { tangent: new THREE.Vector3(0, 0, -1), axis: 'x', axisSign: -1 },
+  },
+  D: {
+    H: { tangent: new THREE.Vector3(1, 0, 0), axis: 'z', axisSign: 1 },
+    V: { tangent: new THREE.Vector3(0, 0, 1), axis: 'x', axisSign: -1 },
+  },
+};
+
+// Inverse of cube.js's SLICES: (axis, slot) → slice letter.
+const SLICE_BY_AXIS_SLOT = {
+  x: { '-1': 'L', 1: 'R' },
+  y: { '-1': 'D', 1: 'U' },
+  z: { '-1': 'B', 1: 'F' },
+};
+
+// Drag distance (in NDC; canvas spans 2) before locking in a slice. ~5px.
+const DRAG_DECISION_THRESHOLD = 0.01;
+
+const snapPosition = (cubie) => ({
+  x: Math.round(cubie.position.x),
+  y: Math.round(cubie.position.y),
+  z: Math.round(cubie.position.z),
+});
+
+// World tangent → normalized NDC direction at the cubie's screen position.
+// Called once per gesture so per-frame moves are just dot products.
+const projectTangentToNdc = (worldTangent, originWorldPos, camera) => {
+  const start = originWorldPos.clone().project(camera);
+  const tip = originWorldPos.clone().add(worldTangent).project(camera);
+  return new THREE.Vector2(tip.x - start.x, tip.y - start.y).normalize();
+};
+
+// Returns { face, direction } once drag exceeds threshold; null otherwise
+// (still below threshold or hit a middle slice — middle slices aren't modeled).
+const decideSliceFromDrag = (g, dragNdcDelta) => {
+  const dotH = dragNdcDelta.dot(g.screenH);
+  const dotV = dragNdcDelta.dot(g.screenV);
+
+  if (Math.max(Math.abs(dotH), Math.abs(dotV)) < DRAG_DECISION_THRESHOLD) {
+    return null;
+  }
+
+  const useH = Math.abs(dotH) >= Math.abs(dotV);
+  const decision = useH ? FACE_TANGENTS[g.faceName].H : FACE_TANGENTS[g.faceName].V;
+  const dragSign = Math.sign(useH ? dotH : dotV);
+
+  const slot = Math.round(g.cubie.position[decision.axis]);
+  if (slot === 0) return null;
+
+  // Three signs collapse the cross-product geometry into one branch.
+  const direction = dragSign * decision.axisSign * slot < 0 ? 'cw' : 'ccw';
+
+  return { face: SLICE_BY_AXIS_SLOT[decision.axis][slot], direction };
+};
+
+// Active gesture: null | { phase: 'PICKED' | 'COMMITTED', ... }
+let gesture = null;
+
 // Build the 27-cubie Rubik's-cube
 const rubiksCube = createRubiksCube();
 scene.add(rubiksCube.group);
@@ -74,37 +154,71 @@ scene.add(rubiksCube.group);
 //      const s = cube.beginRotation('U'); s.setAngle(Math.PI/3); s.end();
 window.cube = rubiksCube;
 
-// Pick the cubie + face under the pointer when the user clicks the canvas.
+// Start a gesture if the click hits a cubie; otherwise let orbit handle it.
 renderer.domElement.addEventListener('pointerdown', (event) => {
-  // Convert the click's pixel position into NDC, accounting for the
-  // canvas's actual on-page rect (handles non-fullscreen layouts cleanly).
   const rect = renderer.domElement.getBoundingClientRect();
   pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-  // Build the ray for this pixel through the current camera, then ask
-  // every cubie if it intersects. `false` = don't recurse into the
-  // wireframe LineSegments2 children parented to each cubie.
   raycaster.setFromCamera(pointerNdc, camera);
   const [hit] = raycaster.intersectObjects(rubiksCube.cubies, false);
   if (!hit) return;
 
-  // hit.face.normal is in the cubie's *local* space. Transforming by
-  // matrixWorld gives the direction the face is actually pointing in
-  // the scene right now — the only normal that maps to a Rubik's letter.
   const cubie = hit.object;
   const worldNormal = hit.face.normal.clone().transformDirection(cubie.matrixWorld);
-  const face = normalToFaceName(worldNormal);
+  const faceName = normalToFaceName(worldNormal);
+  if (!faceName) return;
 
-  // Grid coords use Math.round on position because slot 0/±1 maps to
-  // world coords 0/±CUBE_DISTANCE (1.05). Rounding tolerates GAP cleanly.
-  const gridPosition = {
-    x: Math.round(cubie.position.x),
-    y: Math.round(cubie.position.y),
-    z: Math.round(cubie.position.z),
+  // Project tangents once; camera is frozen for the gesture (orbit off).
+  const cubieWorldPos = cubie.getWorldPosition(new THREE.Vector3());
+  const tangents = FACE_TANGENTS[faceName];
+  const screenH = projectTangentToNdc(tangents.H.tangent, cubieWorldPos, camera);
+  const screenV = projectTangentToNdc(tangents.V.tangent, cubieWorldPos, camera);
+
+  gesture = {
+    phase: 'PICKED',
+    pointerId: event.pointerId,
+    startNdc: pointerNdc.clone(),
+    faceName,
+    cubie,
+    screenH,
+    screenV,
   };
 
-  console.log('clicked', { face, gridPosition, point: hit.point });
+  controls.enabled = false;
+  // Keep receiving move/up even if the cursor leaves the canvas.
+  renderer.domElement.setPointerCapture(event.pointerId);
+
+  console.log('picked', { face: faceName, gridPosition: snapPosition(cubie) });
+});
+
+// Decide the slice once drag exceeds threshold; M2c will drive setAngle here.
+renderer.domElement.addEventListener('pointermove', (event) => {
+  if (!gesture || event.pointerId !== gesture.pointerId) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  const dragDelta = pointerNdc.clone().sub(gesture.startNdc);
+
+  if (gesture.phase !== 'PICKED') return;
+
+  const decision = decideSliceFromDrag(gesture, dragDelta);
+  if (!decision) return;
+
+  gesture.phase = 'COMMITTED';
+  gesture.decision = decision;
+  console.log('decided', decision);
+});
+
+renderer.domElement.addEventListener('pointerup', (event) => {
+  if (!gesture || event.pointerId !== gesture.pointerId) return;
+
+  console.log('released', { phase: gesture.phase, decision: gesture.decision ?? null });
+
+  controls.enabled = true;
+  renderer.domElement.releasePointerCapture(event.pointerId);
+  gesture = null;
 });
 
 // Animation loop: Renders the scene and updates the cube's rotation

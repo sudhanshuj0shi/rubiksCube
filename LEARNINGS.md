@@ -174,3 +174,22 @@ Think of three.js as a film production:
   - Pointer events fire many times per second during a drag. `new THREE.Raycaster()` and `new THREE.Vector2()` per event = garbage soup, frame-rate hiccups.
   - Hoist both to module scope; set their fields each event instead of newing up replacements. A canonical three.js perf footgun, called out in the docs.
 - _Aha:_ the cube module already had `group.children`, but during a rotation that list temporarily holds the transient pivot too — wrong shape for picking. Exposed a separate flat `cubies` array of mesh references so the raycaster always sees exactly 27 things, regardless of what the scene graph is doing mid-twist.
+
+---
+
+### 2026-05-03 — Reading intent from a drag
+
+> Goal: turn a 2D pointer drag into a specific slice + direction.
+
+- **Act 1 — Two compass needles painted on each face**
+  - Each face carries a "right" tangent (H) and "up" tangent (V) in world space. Project both to the screen once at gesture start, dot the user's drag against each, and the bigger absolute dot wins the rotation axis. Decompose-against-a-basis, done in screen space because that's where the user's hand lives.
+  - Pre-projection happens **once per gesture** — orbit is disabled for the duration, so the camera (and the projected tangents) are frozen. Per-frame moves are then just two cheap dot products.
+- **Act 2 — A gesture is a tennis rally, not a single event**
+  - Three handlers (`pointerdown` / `pointermove` / `pointerup`) share one mutable `gesture` object with explicit phases: `PICKED` (hit but undecided) → `COMMITTED` (slice + direction frozen). Every handler gates on `pointerId` first — "is this rally even mine?"
+  - `setPointerCapture` keeps the rally going when the cursor leaves the canvas. Without it, fast drags freeze mid-twist at the window edge.
+- **Act 3 — Coexisting with OrbitControls**
+  - Same canvas, two listeners. The world's smallest mode switch: `controls.enabled = false` on a successful pick, `= true` on release. Hit and miss cleanly partition who owns the event — orbit gets misses, picking gets hits.
+- **Act 4 — Three signs collapse the cw/ccw question**
+  - `dragSign * axisSign * slot < 0 ? 'cw' : 'ccw'` — three ±1 multiplications resolve every face × direction × slot combo. The math falls out of `cross(faceNormal, tangent)` baked into the `FACE_TANGENTS` table at module init.
+  - Same "right-hand rule mirrored across pairs" pattern from last session's `SLICES` table. Trust the table-derived sign; don't re-derive it per face every time.
+- _Aha:_ middle slices (`M`, `E`, `S` in standard notation) aren't modeled in `SLICES` yet — a click on the dead-center cubie of any face would try to twist around an axis with no slot at ±1. Detect early (`slot === 0 → return null`) and abort cleanly. Future-proof for when middle slices land.
