@@ -240,3 +240,14 @@ Think of three.js as a film production:
 - **Hover = raycast on every move** — the same picker that runs on `pointerdown` (raycaster + 27 cubies) also runs on `pointermove` when no gesture is active. 27 bounding-box tests per move is essentially free; no throttling needed for scenes this size. The lesson: if a check is already cheap, don't pre-optimize it away.
 - **Three cursor states tied to three lifecycle moments** — `pointermove` (idle): grab/none toggle. `pointerdown` (grabbed): force `'grabbing'`. `pointerup` (released): re-raycast and restore. The release case matters because pointer capture means the pointer might still be over the cube when the gesture ends — without re-checking, the cursor would stay frozen on `'grabbing'` until the user moved.
 - _Aha:_ the same `pointerNdc` + `raycaster` instances drive both hover and drag. No parallel state to keep in sync — the cursor naturally agrees with what a click would do, because they share the picker. Reusing the picking primitive is what makes "hover state" a 5-line addition instead of a feature.
+
+---
+
+### 2026-05-04 — Taking the show on tour
+
+> Goal: deploy the cube to GitHub Pages instead of just running it locally.
+
+- **Dev server vs the open web** — `npm run dev` is a rehearsal hall: Vite quietly stands between your source and the browser, translating `import * as THREE from 'three'` into a real URL on the fly. GitHub Pages is opening night with no stagehand — it serves whatever bytes you push, verbatim. Bare specifiers that worked in dev throw `Failed to resolve module specifier "three"` the moment Vite isn't there to translate them.
+- **`base` is the venue's address** — Vite emits asset URLs relative to its `base` config. For `<user>.github.io/repo/`, you need `base: '/repo/'` or every script/style tag points one floor up to `<user>.github.io/assets/...` and 404s. Five lines of config in `vite.config.js`, but it's the single most common Pages misconfig.
+- **Recipe vs cake** — `vite.config.js`, `script.js`, `package.json` are the recipe — tracked in git. `dist/` is the cake — derived, regenerable, never committed to `main`. Two valid distribution paths: GitHub Actions bakes on every push (artifact, no branch), or the `gh-pages` package bakes locally and force-pushes to a `gh-pages` branch. Either way `main` stays clean.
+- _Aha:_ the bare-specifier error is doing you a favor — it's the browser screaming "I am not a Node-style module resolver." That single sentence explains 90% of "works locally, broken in prod" bundler issues: dev tooling pretends bare imports are real URLs, production doesn't.
