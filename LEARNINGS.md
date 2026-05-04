@@ -251,3 +251,15 @@ Think of three.js as a film production:
 - **`base` is the venue's address** — Vite emits asset URLs relative to its `base` config. For `<user>.github.io/repo/`, you need `base: '/repo/'` or every script/style tag points one floor up to `<user>.github.io/assets/...` and 404s. Five lines of config in `vite.config.js`, but it's the single most common Pages misconfig.
 - **Recipe vs cake** — `vite.config.js`, `script.js`, `package.json` are the recipe — tracked in git. `dist/` is the cake — derived, regenerable, never committed to `main`. Two valid distribution paths: GitHub Actions bakes on every push (artifact, no branch), or the `gh-pages` package bakes locally and force-pushes to a `gh-pages` branch. Either way `main` stays clean.
 - _Aha:_ the bare-specifier error is doing you a favor — it's the browser screaming "I am not a Node-style module resolver." That single sentence explains 90% of "works locally, broken in prod" bundler issues: dev tooling pretends bare imports are real URLs, production doesn't.
+
+---
+
+### 2026-05-04 — Hiring a robot stagehand
+
+> Goal: let GitHub build and publish the cube on every push, instead of running `npm run build` by hand.
+
+- **GitHub Actions = robot stagehand** — a YAML file in `.github/workflows/` is a script the robot follows. On the trigger you specify (`on: push: branches: [main]`), GitHub spins up a fresh Linux VM, runs the steps in order, hands the result to wherever you tell it (Pages, in this case), and discards the VM. Same job every time, no human in the loop.
+- **Declarative pipelines** — you don't write "how to deploy"; you list the steps and let the runner orchestrate them. Each step is either a built-in action (`actions/checkout@v4`, `actions/setup-node@v4`) or a shell command. The version pin (`@v4`) matters: without it, GitHub refuses to run, or worse, silently breaks when the action publishes a major version.
+- **`npm ci` vs `npm install` in CI** — `ci` reads `package-lock.json` strictly and fails loud if anything's drifted. That's exactly what you want on a build machine: deterministic installs, no surprise version bumps mid-build. Rule of thumb: `install` for humans, `ci` for robots.
+- **Permissions are a tiny security model** — workflows get minimal default permissions. Pages deploys need three scopes: `contents: read` (clone the repo), `pages: write` (publish), and `id-token: write` (OIDC handshake proves the deploy is from your repo, not a fork). Forget any one and the deploy fails with the unhelpful `Resource not accessible by integration`.
+- _Aha:_ the workflow is the *recipe* for the cake; GitHub Actions is the *kitchen* that bakes it on demand. Pages is the *display case* on the street. Three roles, cleanly separated — and exactly the same source files (the recipe) flow through all three. Once you see the split, "how do I deploy?" stops being a separate question from "how do I build?" — the answer is "tell the kitchen to follow the recipe."
